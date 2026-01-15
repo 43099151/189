@@ -45,41 +45,6 @@ endpoint = ${R2_ENDPOINT}
 acl = private
 EOF
 
-# --- 3. 配置 Nginx 保活 (修复版) ---
-echo "==> [System] 配置 Nginx 保活服务..."
-
-# 创建运行目录
-mkdir -p /run/nginx /var/lib/nginx /var/log/nginx
-chmod -R 777 /var/lib/nginx /var/log/nginx /run/nginx
-
-# 【关键修改】修改主配置文件 nginx.conf 中的 PID 路径，而不是在 default.conf 里加
-# 如果 nginx.conf 里有 pid 行，替换它；如果没有，就不管（使用默认）
-sed -i 's|^pid .*|pid /run/nginx/nginx.pid;|' /etc/nginx/nginx.conf || echo "nginx.conf pid modify skipped"
-
-# 清理旧配置
-rm -rf /etc/nginx/http.d/* /etc/nginx/conf.d/* /etc/nginx/sites-enabled/*
-mkdir -p /etc/nginx/http.d
-
-# 写入配置 (去掉了 pid 行)
-cat > /etc/nginx/http.d/default.conf <<EOF
-server {
-    listen 7860;
-    listen [::]:7860;
-    server_name localhost;
-    access_log /var/log/nginx/access.log;
-    error_log /var/log/nginx/error.log;
-
-    location / {
-        add_header Content-Type text/plain;
-        return 200 "Hugging Face Keep-Alive: Cloud189 Running (Nginx Mode)";
-    }
-}
-EOF
-
-# 链接日志
-ln -sf /dev/stdout /var/log/nginx/access.log
-ln -sf /dev/stderr /var/log/nginx/error.log
-
 # --- 4. 恢复数据 ---
 echo "==> [Restore] 尝试恢复数据..."
 if [ -n "$R2_SECRET_KEY" ]; then
@@ -102,18 +67,10 @@ echo "==> [SSH] 启动 sshd..."
 
 # --- 6. 启动服务 ---
 
-# A. 启动 Nginx
-echo "==> [System] 启动 Nginx..."
-nginx -t
-nginx
-# 检查 Nginx 是否存活
-sleep 2
-if ! pgrep nginx > /dev/null; then
-    echo "❌ [Fatal] Nginx 启动失败！"
-    cat /var/log/nginx/error.log
-else
-    echo "✅ Nginx 启动成功 (PID: $(pgrep nginx | head -n 1))"
-fi
+# [新增] 启动端口转发 (7860 -> 3000)
+# HF 访问 7860 时，Socat 会将其无缝转发到本地的 3000 (主程序)
+echo "==> [Network] 启动 Socat 转发 (7860 -> 3000)..."
+socat TCP-LISTEN:7860,fork,bind=0.0.0.0 TCP:127.0.0.1:3000 &
 
 # --- B. 启动 Tailscale (Userspace 模式) ---
 echo "==> [Tailscale] 初始化..."
@@ -225,4 +182,5 @@ else
         echo "❌ 主程序崩溃 (Yarn Mode)"
         tail -f /dev/null
     }
+
 fi
