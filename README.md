@@ -1,10 +1,3 @@
----
-title: '189'
-emoji: 📉
-colorFrom: pink
-colorTo: gray
-sdk: docker
-pinned: false
----
-
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+TS_AUTH_KEY=
+R2_SECRET_KEY=
+WEBUI_PASSWORD=
